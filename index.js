@@ -126,6 +126,29 @@ if (!token) {
 
 const bot = new TelegramBot(token, { polling: true });
 
+// Настроим переопределение методов `logger`, чтобы они выводили сообщения как `console.log`
+// Формат: [ISO_TIMESTAMP] LEVEL: message
+if (typeof logger !== 'undefined' && logger) {
+    const makeWrapper = (level) => {
+        logger[level] = (...args) => {
+            const ts = new Date().toISOString();
+            try {
+                if (args.length >= 2 && typeof args[0] === 'object' && typeof args[1] === 'string') {
+                    // logger.info({meta}, 'message') -> print message and metadata
+                    console.log(`[${ts}] ${level.toUpperCase()}: ${args[1]}`);
+                    console.log(args[0]);
+                } else {
+                    const parts = args.map(a => (typeof a === 'string' ? a : JSON.stringify(a)));
+                    console.log(`[${ts}] ${level.toUpperCase()}: ${parts.join(' ')}`);
+                }
+            } catch (e) {
+                console.log(`[${ts}] ${level.toUpperCase()}:`, ...args);
+            }
+        };
+    };
+    ['info', 'warn', 'error', 'debug'].forEach(makeWrapper);
+}
+
 logger.info('Бот запущен...');
 
 // --- КЕШ file_id и стриминговая отправка ---
