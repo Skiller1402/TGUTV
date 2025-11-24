@@ -6,18 +6,19 @@ import path from 'path';
 import os from 'os';
 import logger from './logger.js';
 import { renderEfirGraphic } from './templateRenderer.js';
+import { resolveFromRoot, PROJECT_ROOT } from './utils/paths.js';
 
-const { promises: fsPromises } = fs;
+
 
 // Глобальный cwd при старте (можно использовать напрямую)
-const CWD = process.cwd();
-const absFromCwd = (p) => {
-    console.log('НАШ ПУТЬ КВД PPPPPP', p)
-    return path.isAbsolute(p) ? p : path.join(CWD, p)
-};
+// const CWD = process.cwd();
+// const absFromCwd = (p) => {
+//     console.log('НАШ ПУТЬ КВД PPPPPP', p)
+//     return path.isAbsolute(p) ? p : path.join(CWD, p)
+// };
 
 
-console.log('НАШ ПУТЬ КВД', CWD)
+
 
 const arrTv = [
     {
@@ -131,12 +132,13 @@ const bot = new TelegramBot(token, { polling: true });
 logger.info('Бот запущен...');
 
 // --- КЕШ file_id и стриминговая отправка ---
-const FILE_ID_DB = absFromCwd('.file_id_cache.json');
+const FILE_ID_DB = resolveFromRoot('.file_id_cache.json');
 let fileIdCache = {};
 try {
     if (fs.existsSync(FILE_ID_DB)) {
         const raw = fs.readFileSync(FILE_ID_DB, 'utf8') || '{}';
         fileIdCache = JSON.parse(raw);
+        console.log('НАШ КЕШ ФАЙЛ ID', fileIdCache)
     }
 } catch (e) {
     logger.warn({ err: e }, 'Не удалось загрузить кеш file_id');
@@ -176,7 +178,7 @@ async function withSendSlot(fn) {
 
 async function sendLocalFile(chatId, relativePath, caption) {
     // Пути относительно process.cwd()
-    const absPath = absFromCwd(relativePath);
+    const absPath = resolveFromRoot(relativePath);
     logger.info({ chatId, path: absPath }, 'sendLocalFile: попытка отправки');
 
     let stats;
@@ -334,7 +336,7 @@ function normalizeKey(name) {
     return name.toString().toLowerCase().replace(/[^a-z0-9а-яё]+/g, '');
 }
 
-const FILES_ROOT = absFromCwd('files');
+const FILES_ROOT = resolveFromRoot('files');
 const FILE_MAP_TTL_MS = 5 * 60 * 1000;
 let fileMapCache = { map: {}, nameIndex: {}, builtAt: 0 };
 let fileMapBuilding = null;
@@ -390,7 +392,7 @@ async function buildFileMap() {
             if (assetKey) {
                 const files = await listFilesSafe(childPath);
                 if (files.length) {
-                    map[dirent.name][assetKey] = files.map(f => absFromCwd(path.relative(CWD, f)));
+                    map[dirent.name][assetKey] = files.map(f => resolveFromRoot(path.relative(CWD, f)));
                     logger.debug({ channel: dirent.name, assetKey, count: files.length }, 'buildFileMap: найден asset');
                 }
                 continue;
@@ -416,7 +418,7 @@ async function buildFileMap() {
                 if (!assetKey2) continue;
                 const files2 = await listFilesSafe(path.join(childPath, g.name));
                 if (files2.length) {
-                    map[child.name][assetKey2] = files2.map(f => absFromCwd(path.relative(CWD, f)));
+                    map[child.name][assetKey2] = files2.map(f => resolveFromRoot(path.relative(CWD, f)));
                     logger.debug({ channel: child.name, assetKey: assetKey2, count: files2.length }, 'buildFileMap: найден asset у суббренда');
                 }
             }
