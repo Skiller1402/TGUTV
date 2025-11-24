@@ -9,18 +9,11 @@ import { renderEfirGraphic } from './templateRenderer.js';
 
 const { promises: fsPromises } = fs;
 
-// -----
-// Настройка путей относительно process.cwd()
-
 // Глобальный cwd при старте (можно использовать напрямую)
 const CWD = process.cwd();
+const absFromCwd = (p) => path.isAbsolute(p) ? p : path.join(CWD, p);
 
-// Помощь: абсолютный путь относительно cwd (или никакой, если abs)
-// const absFromCwd = (p) => path.isAbsolute(p) ? p : path.join(CWD, p);
-const absFromCwd = (p) => path.join(CWD, p);
-// ---
-
-const arrTv =  [
+const arrTv = [
     {
         name: 'UTV',
         subname: [
@@ -36,7 +29,7 @@ const arrTv =  [
         name: 'UTV Media',
         subname: [
             {
-               logo: 'Логотип',
+                logo: 'Логотип',
                 style: 'Фирменный стиль',
                 brand: 'Брендбук',
                 font: 'Шрифт',
@@ -120,7 +113,8 @@ const arrTv =  [
             }
         ]
     },
-]
+];
+
 const token = process.env.BOT_TOKEN;
 if (!token) {
     throw new Error('Не задан BOT_TOKEN в переменных окружения');
@@ -131,7 +125,7 @@ const bot = new TelegramBot(token, { polling: true });
 logger.info('Бот запущен...');
 
 // --- КЕШ file_id и стриминговая отправка ---
-const FILE_ID_DB = absFromCwd('./.file_id_cache.json');
+const FILE_ID_DB = absFromCwd('.file_id_cache.json');
 let fileIdCache = {};
 try {
     if (fs.existsSync(FILE_ID_DB)) {
@@ -175,7 +169,7 @@ async function withSendSlot(fn) {
 }
 
 async function sendLocalFile(chatId, relativePath, caption) {
-    // Теперь пусть относительный путь считается от process.cwd()
+    // Пути относительно process.cwd()
     const absPath = absFromCwd(relativePath);
     logger.info({ chatId, path: absPath }, 'sendLocalFile: попытка отправки');
 
@@ -280,8 +274,8 @@ bot.onText(/Шаблоны для новостей в фигме/, (msg) => {
     const chatId = msg.chat.id;
     logger.info({ chatId }, 'Триггер: Шаблоны для новостей в фигме');
     const message = `• <a href="https://www.figma.com/design/2e4JbnCKqyWj15QhkaRXlv/%D1%88%D0%B0%D0%B1%D0%BB%D0%BE%D0%BD-%D1%83%D0%BB%D0%B8%D1%86%D1%8B-%D0%B8-%D0%B2%D0%BE%D0%B4%D0%B0?node-id=0-1&t=2tBPxMNSdIYW4xoL-0">Перекрытия</a>\n` +
-                    `• <a href="https://www.figma.com/design/5uuK7vwboEau7XDFGpcUPi/%D0%98%D1%82%D0%BE%D0%B3%D0%B8?node-id=0-1&p=f&t=2p1sR8sLebWv0P3D-0">Обложки</a>\n` +
-                    `• <a href="https://www.figma.com/design/asJoqHwnNuTWrw77Fefek8/%D0%9D%D0%BE%D0%B2%D0%BE%D1%81%D1%82%D0%B8_%D0%BF%D0%BB%D0%B0%D1%88%D0%BA%D0%B8?node-id=0-1&p=f&t=bFErVjQ1qsO9EPwq-0">Плашки подписи и др</a>`;
+        `• <a href="https://www.figma.com/design/5uuK7vwboEau7XDFGpcUPi/%D0%98%D1%82%D0%BE%D0%B3%D0%B8?node-id=0-1&p=f&t=2p1sR8sLebWv0P3D-0">Обложки</a>\n` +
+        `• <a href="https://www.figma.com/design/asJoqHwnNuTWrw77Fefek8/%D0%9D%D0%BE%D0%B2%D0%BE%D1%81%D1%82%D0%B8_%D0%BF%D0%BB%D0%B0%D1%88%D0%BA%D0%B8?node-id=0-1&p=f&t=bFErVjQ1qsO9EPwq-0">Плашки подписи и др</a>`;
     bot.sendMessage(chatId, message, { parse_mode: 'HTML', disable_web_page_preview: false });
 });
 
@@ -330,12 +324,11 @@ bot.onText(/вектор/, (msg) => {
     return safeSendAsset(chatId, channelName, 'logo_vector', `Логотип — вектор (${channelName})`);
 });
 
-// --- автоматически собрать fileMap из папки ./files относительно process.cwd() ---
 function normalizeKey(name) {
     return name.toString().toLowerCase().replace(/[^a-z0-9а-яё]+/g, '');
 }
 
-const FILES_ROOT = absFromCwd('./files');
+const FILES_ROOT = absFromCwd('files');
 const FILE_MAP_TTL_MS = 5 * 60 * 1000;
 let fileMapCache = { map: {}, nameIndex: {}, builtAt: 0 };
 let fileMapBuilding = null;
@@ -391,7 +384,7 @@ async function buildFileMap() {
             if (assetKey) {
                 const files = await listFilesSafe(childPath);
                 if (files.length) {
-                    map[dirent.name][assetKey] = files;
+                    map[dirent.name][assetKey] = files.map(f => absFromCwd(path.relative(CWD, f)));
                     logger.debug({ channel: dirent.name, assetKey, count: files.length }, 'buildFileMap: найден asset');
                 }
                 continue;
@@ -417,7 +410,7 @@ async function buildFileMap() {
                 if (!assetKey2) continue;
                 const files2 = await listFilesSafe(path.join(childPath, g.name));
                 if (files2.length) {
-                    map[child.name][assetKey2] = files2;
+                    map[child.name][assetKey2] = files2.map(f => absFromCwd(path.relative(CWD, f)));
                     logger.debug({ channel: child.name, assetKey: assetKey2, count: files2.length }, 'buildFileMap: найден asset у суббренда');
                 }
             }
@@ -465,7 +458,6 @@ async function sendAsset(chatId, channelName, assetKey, caption) {
     if (Array.isArray(rel)) {
         logger.info({ chatId, channel: channelName, assetKey, count: rel.length }, 'sendAsset: отправка нескольких файлов');
         for (const p of rel) {
-            // p - абсолютный путь, но тоже считается от process.cwd()
             await sendLocalFile(chatId, p, caption || `${channelName} — ${assetKey}`);
         }
         return;
@@ -573,14 +565,12 @@ function showMainMenu(chatId) {
 
 function showChannels(chatId) {
     ensureState(chatId);
-    // push channels if not already top
     if (currentView(chatId) !== 'channels') pushView(chatId, 'channels');
     logger.debug({ chatId }, 'showChannels');
     const keyboard = makeTwoColumnKeyboard(arrTv.map(c => c.name));
     bot.sendMessage(chatId, 'Выберите нужный канал:', { reply_markup: { keyboard, resize_keyboard: true } });
 }
 
-// Подкнопки для 'Уфанет и пр' — отображаются как отдельный выбор
 const ufanetSubs = ['Уфанет', 'Свос', 'Авантис', 'ССС'];
 
 function showUfanetSubs(chatId) {
@@ -597,7 +587,6 @@ function showUfanetSubs(chatId) {
 
 function showChannelSubmenu(chatId, channel) {
     ensureState(chatId);
-    // если выбран корневой Уфанет — показываем подпункты
     if (channel === 'Уфанет и пр') {
         return showUfanetSubs(chatId);
     }
@@ -613,7 +602,6 @@ function showChannelSubmenu(chatId, channel) {
             for (const v of Object.values(subObj)) labels.push(v);
         }
     } else {
-        // fallback для суббрендов (например, Уфанет/Авантис), если нет определения в arrTv
         labels.push('Логотип', 'Фирменный бланк', 'Брендбук', 'Шрифт');
     }
     const keyboard = makeTwoColumnKeyboard(labels);
@@ -679,7 +667,6 @@ async function generateEfirImage(chatId, text) {
     }
 }
 
-// Универсальный обработчик сообщений для обработки выбора канала и подменю
 bot.on('message', async (msg) => {
     const chatId = msg.chat.id;
     const text = msg.text;
