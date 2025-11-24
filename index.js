@@ -1,4 +1,5 @@
 import 'dotenv/config';
+
 import TelegramBot from 'node-telegram-bot-api';
 import fs from 'fs';
 import path from 'path';
@@ -8,23 +9,16 @@ import { renderEfirGraphic } from './templateRenderer.js';
 
 const { promises: fsPromises } = fs;
 
+// -----
+// Настройка путей относительно process.cwd()
 
+// Глобальный cwd при старте (можно использовать напрямую)
+const CWD = process.cwd();
 
-// const obj = new class {
-//     constructor(name, subname, dest, link) {
-//         theis.name = name;
-//         this.subname = subname;
-//         this.dest = dest;
-//         this.link = link;
-//     }
-
-
-//     getLink() {
-//         return this.link;
-//     }
-// }
-
-
+// Помощь: абсолютный путь относительно cwd (или никакой, если abs)
+// const absFromCwd = (p) => path.isAbsolute(p) ? p : path.join(CWD, p);
+const absFromCwd = (p) => path.join(CWD, p);
+// ---
 
 const arrTv =  [
     {
@@ -37,9 +31,7 @@ const arrTv =  [
                 font: 'Шрифт',
             }
         ]
-
     },
-
     {
         name: 'UTV Media',
         subname: [
@@ -51,7 +43,6 @@ const arrTv =  [
             }
         ]
     },
-        
     {
         name: 'Живи Активно',
         subname: [
@@ -63,7 +54,6 @@ const arrTv =  [
             }
         ]
     },
-      
     {
         name: 'Сумико',
         subname: [
@@ -71,10 +61,10 @@ const arrTv =  [
                 logo: 'Логотип',
                 style: 'Фирменный стиль',
                 brand: 'Брендбук',
-                font: 'Шрифт',            }
+                font: 'Шрифт',
+            }
         ]
     },
-
     {
         name: 'HOME4K',
         subname: [
@@ -86,8 +76,7 @@ const arrTv =  [
             }
         ]
     },
-
-     {
+    {
         name: 'Живая природа',
         subname: [
             {
@@ -98,7 +87,6 @@ const arrTv =  [
             }
         ]
     },
-
     {
         name: 'Глазами туриста',
         subname: [
@@ -110,7 +98,6 @@ const arrTv =  [
             }
         ]
     },
-
     {
         name: 'UTV Production',
         subname: [
@@ -122,7 +109,6 @@ const arrTv =  [
             }
         ]
     },
-
     {
         name: 'Уфанет и пр',
         subname: [
@@ -144,9 +130,8 @@ const bot = new TelegramBot(token, { polling: true });
 
 logger.info('Бот запущен...');
 
-// helper: отправить локальный файл (путь относительно рабочей директории проекта)
 // --- КЕШ file_id и стриминговая отправка ---
-const FILE_ID_DB = path.resolve('./.file_id_cache.json');
+const FILE_ID_DB = absFromCwd('./.file_id_cache.json');
 let fileIdCache = {};
 try {
     if (fs.existsSync(FILE_ID_DB)) {
@@ -175,13 +160,10 @@ async function fileKeyForCache(absPath, stats) {
     }
 }
 
-// Простой ограничитель параллельных отправок
 const MAX_CONCURRENT_SENDS = 2;
 let currentSends = 0;
 async function withSendSlot(fn) {
     while (currentSends >= MAX_CONCURRENT_SENDS) {
-        // небольшая пауза
-        // eslint-disable-next-line no-await-in-loop
         await new Promise(r => setTimeout(r, 200));
     }
     currentSends++;
@@ -193,7 +175,8 @@ async function withSendSlot(fn) {
 }
 
 async function sendLocalFile(chatId, relativePath, caption) {
-    const absPath = path.resolve(relativePath);
+    // Теперь пусть относительный путь считается от process.cwd()
+    const absPath = absFromCwd(relativePath);
     logger.info({ chatId, path: absPath }, 'sendLocalFile: попытка отправки');
 
     let stats;
@@ -216,11 +199,9 @@ async function sendLocalFile(chatId, relativePath, caption) {
             return await withSendSlot(() => bot.sendDocument(chatId, cachedFileId, { caption }));
         } catch (err) {
             logger.warn({ err, chatId, cacheKey }, 'sendLocalFile: ошибка при отправке по cached file_id, будем загружать файл заново');
-            // fallthrough — загрузим файл заново
         }
     }
 
-    // отправляем файл как ReadStream
     const stream = fs.createReadStream(absPath);
     try {
         const sent = await withSendSlot(() => bot.sendDocument(chatId, stream, { caption }));
@@ -257,14 +238,11 @@ async function sendPhotoFromBuffer(chatId, buffer, caption, filename = 'efir-tem
     }
 }
 
-
 bot.onText(/\/start/, (msg) => {
     const chatId = msg.chat.id;
     logger.info({ chatId }, 'Триггер: /start');
     showMainMenu(chatId);
 });
-
-
 
 bot.onText(/Телеканалы/, (msg) => {
     const chatId = msg.chat.id;
@@ -272,28 +250,18 @@ bot.onText(/Телеканалы/, (msg) => {
     showChannels(chatId);
 });
 
-        
-
 bot.onText(/Генерация текста для эфира/, (msg) => {
     const chatId = msg.chat.id;
     logger.info({ chatId }, 'Триггер: Генерация текста для эфира');
     promptEfirText(chatId);
 });
 
-
-
-
-
-
-
-// Обработчик для "Что где лежит" - показать 4 конкретные кнопки
 bot.onText(/Что где лежит/, (msg) => {
     const chatId = msg.chat.id;
     logger.info({ chatId }, 'Триггер: Что где лежит');
     showWhatWhere(chatId);
 });
 
-// Простые обработчики для трёх опций (заглушки)
 bot.onText(/Проекты дизайнеров/, (msg) => {
     const chatId = msg.chat.id;
     logger.info({ chatId }, 'Триггер: Проекты дизайнеров');
@@ -314,18 +282,15 @@ bot.onText(/Шаблоны для новостей в фигме/, (msg) => {
     const message = `• <a href="https://www.figma.com/design/2e4JbnCKqyWj15QhkaRXlv/%D1%88%D0%B0%D0%B1%D0%BB%D0%BE%D0%BD-%D1%83%D0%BB%D0%B8%D1%86%D1%8B-%D0%B8-%D0%B2%D0%BE%D0%B4%D0%B0?node-id=0-1&t=2tBPxMNSdIYW4xoL-0">Перекрытия</a>\n` +
                     `• <a href="https://www.figma.com/design/5uuK7vwboEau7XDFGpcUPi/%D0%98%D1%82%D0%BE%D0%B3%D0%B8?node-id=0-1&p=f&t=2p1sR8sLebWv0P3D-0">Обложки</a>\n` +
                     `• <a href="https://www.figma.com/design/asJoqHwnNuTWrw77Fefek8/%D0%9D%D0%BE%D0%B2%D0%BE%D1%81%D1%82%D0%B8_%D0%BF%D0%BB%D0%B0%D1%88%D0%BA%D0%B8?node-id=0-1&p=f&t=bFErVjQ1qsO9EPwq-0">Плашки подписи и др</a>`;
-
     bot.sendMessage(chatId, message, { parse_mode: 'HTML', disable_web_page_preview: false });
 });
 
-// Обработчик для кнопки 'Логотип'
 bot.onText(/Логотип/, (msg) => {
     const chatId = msg.chat.id;
     logger.info({ chatId }, 'Триггер: Логотип');
     showLogoOptions(chatId);
 });
 
-// Обработчик для кнопки 'Где заполнить заявку на Дизайн'
 bot.onText(/Где заполнить заявку на Дизайн/, (msg) => {
     const chatId = msg.chat.id;
     logger.info({ chatId }, 'Триггер: Где заполнить заявку на Дизайн');
@@ -365,358 +330,354 @@ bot.onText(/вектор/, (msg) => {
     return safeSendAsset(chatId, channelName, 'logo_vector', `Логотип — вектор (${channelName})`);
 });
 
-    // --- автоматически собрать fileMap из папки ./files ---
-    function normalizeKey(name) {
-        return name.toString().toLowerCase().replace(/[^a-z0-9а-яё]+/g, '');
+// --- автоматически собрать fileMap из папки ./files относительно process.cwd() ---
+function normalizeKey(name) {
+    return name.toString().toLowerCase().replace(/[^a-z0-9а-яё]+/g, '');
+}
+
+const FILES_ROOT = absFromCwd('./files');
+const FILE_MAP_TTL_MS = 5 * 60 * 1000;
+let fileMapCache = { map: {}, nameIndex: {}, builtAt: 0 };
+let fileMapBuilding = null;
+
+async function readDirSafe(dir) {
+    try {
+        return await fsPromises.readdir(dir, { withFileTypes: true });
+    } catch (err) {
+        if (err && err.code !== 'ENOENT') {
+            logger.warn({ err, dir }, 'readDirSafe: не удалось прочитать каталог');
+        }
+        return [];
     }
+}
 
-    const FILES_ROOT = path.resolve('./files');
-    const FILE_MAP_TTL_MS = 5 * 60 * 1000;
-    let fileMapCache = { map: {}, nameIndex: {}, builtAt: 0 };
-    let fileMapBuilding = null;
-
-    async function readDirSafe(dir) {
-        try {
-            return await fsPromises.readdir(dir, { withFileTypes: true });
-        } catch (err) {
-            if (err && err.code !== 'ENOENT') {
-                logger.warn({ err, dir }, 'readDirSafe: не удалось прочитать каталог');
-            }
-            return [];
+async function listFilesSafe(dir) {
+    const entries = await readDirSafe(dir);
+    const files = [];
+    for (const entry of entries) {
+        if (entry.isFile()) {
+            files.push(path.join(dir, entry.name));
         }
     }
+    return files;
+}
 
-    async function listFilesSafe(dir) {
-        const entries = await readDirSafe(dir);
-        const files = [];
-        for (const entry of entries) {
-            if (entry.isFile()) {
-                files.push(path.join(dir, entry.name));
-            }
-        }
-        return files;
-    }
+async function buildFileMap() {
+    logger.info({ base: FILES_ROOT }, 'buildFileMap: старт асинхронного сканирования');
+    const map = {};
+    const nameIndex = {};
+    const channels = await readDirSafe(FILES_ROOT);
+    for (const dirent of channels) {
+        if (!dirent.isDirectory()) continue;
+        const chFolder = path.join(FILES_ROOT, dirent.name);
+        map[dirent.name] = map[dirent.name] || {};
+        nameIndex[normalizeKey(dirent.name)] = dirent.name;
 
-    async function buildFileMap() {
-        logger.info({ base: FILES_ROOT }, 'buildFileMap: старт асинхронного сканирования');
-        const map = {};
-        const nameIndex = {};
-        const channels = await readDirSafe(FILES_ROOT);
-        for (const dirent of channels) {
-            if (!dirent.isDirectory()) continue;
-            const chFolder = path.join(FILES_ROOT, dirent.name);
-            map[dirent.name] = map[dirent.name] || {};
-            nameIndex[normalizeKey(dirent.name)] = dirent.name;
+        const children = await readDirSafe(chFolder);
+        for (const child of children) {
+            if (!child.isDirectory()) continue;
+            const childName = child.name.toLowerCase();
+            const childPath = path.join(chFolder, child.name);
 
-            const children = await readDirSafe(chFolder);
-            for (const child of children) {
-                if (!child.isDirectory()) continue;
-                const childName = child.name.toLowerCase();
-                const childPath = path.join(chFolder, child.name);
+            let assetKey = null;
+            if (childName.includes('цвет')) assetKey = 'logo_color';
+            else if (childName.includes('бел')) assetKey = 'logo_white';
+            else if (childName.includes('черн')) assetKey = 'logo_black';
+            else if (childName.includes('вектор')) assetKey = 'logo_vector';
+            else if (childName.includes('бренд')) assetKey = 'brandbook';
+            else if (childName.includes('фир') || childName.includes('бланк')) assetKey = 'firmblank';
+            else if (childName.includes('шрифт')) assetKey = 'font';
 
-                let assetKey = null;
-                if (childName.includes('цвет')) assetKey = 'logo_color';
-                else if (childName.includes('бел')) assetKey = 'logo_white';
-                else if (childName.includes('черн')) assetKey = 'logo_black';
-                else if (childName.includes('вектор')) assetKey = 'logo_vector';
-                else if (childName.includes('бренд')) assetKey = 'brandbook';
-                else if (childName.includes('фир') || childName.includes('бланк')) assetKey = 'firmblank';
-                else if (childName.includes('шрифт')) assetKey = 'font';
-
-                if (assetKey) {
-                    const files = await listFilesSafe(childPath);
-                    if (files.length) {
-                        map[dirent.name][assetKey] = files;
-                        logger.debug({ channel: dirent.name, assetKey, count: files.length }, 'buildFileMap: найден asset');
-                    }
-                    continue;
+            if (assetKey) {
+                const files = await listFilesSafe(childPath);
+                if (files.length) {
+                    map[dirent.name][assetKey] = files;
+                    logger.debug({ channel: dirent.name, assetKey, count: files.length }, 'buildFileMap: найден asset');
                 }
+                continue;
+            }
 
-                const grand = await readDirSafe(childPath);
-                const hasAssetChild = grand.some(g => g.isDirectory() && /цвет|бел|черн|вектор|бренд|фир|шрифт/i.test(g.name));
-                if (!hasAssetChild) continue;
+            const grand = await readDirSafe(childPath);
+            const hasAssetChild = grand.some(g => g.isDirectory() && /цвет|бел|черн|вектор|бренд|фир|шрифт/i.test(g.name));
+            if (!hasAssetChild) continue;
 
-                map[child.name] = map[child.name] || {};
-                nameIndex[normalizeKey(child.name)] = child.name;
-                for (const g of grand) {
-                    if (!g.isDirectory()) continue;
-                    const gName = g.name.toLowerCase();
-                    let assetKey2 = null;
-                    if (gName.includes('цвет')) assetKey2 = 'logo_color';
-                    else if (gName.includes('бел')) assetKey2 = 'logo_white';
-                    else if (gName.includes('черн')) assetKey2 = 'logo_black';
-                    else if (gName.includes('вектор')) assetKey2 = 'logo_vector';
-                    else if (gName.includes('бренд')) assetKey2 = 'brandbook';
-                    else if (gName.includes('фир') || gName.includes('бланк')) assetKey2 = 'firmblank';
-                    else if (gName.includes('шрифт')) assetKey2 = 'font';
-                    if (!assetKey2) continue;
-                    const files2 = await listFilesSafe(path.join(childPath, g.name));
-                    if (files2.length) {
-                        map[child.name][assetKey2] = files2;
-                        logger.debug({ channel: child.name, assetKey: assetKey2, count: files2.length }, 'buildFileMap: найден asset у суббренда');
-                    }
+            map[child.name] = map[child.name] || {};
+            nameIndex[normalizeKey(child.name)] = child.name;
+            for (const g of grand) {
+                if (!g.isDirectory()) continue;
+                const gName = g.name.toLowerCase();
+                let assetKey2 = null;
+                if (gName.includes('цвет')) assetKey2 = 'logo_color';
+                else if (gName.includes('бел')) assetKey2 = 'logo_white';
+                else if (gName.includes('черн')) assetKey2 = 'logo_black';
+                else if (gName.includes('вектор')) assetKey2 = 'logo_vector';
+                else if (gName.includes('бренд')) assetKey2 = 'brandbook';
+                else if (gName.includes('фир') || gName.includes('бланк')) assetKey2 = 'firmblank';
+                else if (gName.includes('шрифт')) assetKey2 = 'font';
+                if (!assetKey2) continue;
+                const files2 = await listFilesSafe(path.join(childPath, g.name));
+                if (files2.length) {
+                    map[child.name][assetKey2] = files2;
+                    logger.debug({ channel: child.name, assetKey: assetKey2, count: files2.length }, 'buildFileMap: найден asset у суббренда');
                 }
             }
         }
-        fileMapCache = { map, nameIndex, builtAt: Date.now() };
-        logger.info({ channels: Object.keys(map).length }, 'buildFileMap: завершено');
-        return fileMapCache;
     }
+    fileMapCache = { map, nameIndex, builtAt: Date.now() };
+    logger.info({ channels: Object.keys(map).length }, 'buildFileMap: завершено');
+    return fileMapCache;
+}
 
-    async function getFileMap(force = false) {
-        const isFresh = Date.now() - fileMapCache.builtAt < FILE_MAP_TTL_MS && Object.keys(fileMapCache.map).length;
-        if (!force && isFresh) return fileMapCache;
-        if (!fileMapBuilding) {
-            fileMapBuilding = buildFileMap().finally(() => {
-                fileMapBuilding = null;
-            });
-        }
-        return fileMapBuilding;
-    }
-
-    async function findFileEntry(channelName) {
-        if (!channelName) return null;
-        const { map, nameIndex } = await getFileMap();
-        if (map[channelName]) return map[channelName];
-        const k = normalizeKey(channelName);
-        const real = nameIndex[k];
-        if (real && map[real]) return map[real];
-        logger.warn({ channelName }, 'findFileEntry: канал не найден');
-        return null;
-    }
-
-    async function sendAsset(chatId, channelName, assetKey, caption) {
-        logger.info({ chatId, channel: channelName, assetKey }, 'sendAsset: запрос отправки');
-        const entry = await findFileEntry(channelName);
-        if (!entry) {
-            logger.warn({ chatId, channelName, assetKey }, 'sendAsset: отсутствует запись для канала');
-            return bot.sendMessage(chatId, 'Будет позже');
-        }
-        const rel = entry[assetKey];
-        if (!rel) {
-            logger.warn({ chatId, channelName, assetKey }, 'sendAsset: файлы для assetKey не найдены');
-            return bot.sendMessage(chatId, 'Будет позже');
-        }
-        if (Array.isArray(rel)) {
-            logger.info({ chatId, channel: channelName, assetKey, count: rel.length }, 'sendAsset: отправка нескольких файлов');
-            for (const p of rel) {
-                // eslint-disable-next-line no-await-in-loop
-                await sendLocalFile(chatId, p, caption || `${channelName} — ${assetKey}`);
-            }
-            return;
-        }
-        return sendLocalFile(chatId, rel, caption || `${channelName} — ${assetKey}`);
-    }
-
-    async function safeSendAsset(chatId, channelName, assetKey, caption) {
-        try {
-            return await sendAsset(chatId, channelName, assetKey, caption);
-        } catch (error) {
-            logger.error({ err: error, chatId, channel: channelName, assetKey }, 'safeSendAsset: ошибка отправки');
-            return bot.sendMessage(chatId, 'Не удалось отправить файл, попробуйте ещё раз позже.');
-        }
-    }
-
-    // минимальное состояние чата — выбранный канал
-    const chatState = new Map();
-    const chatCleanupTimers = new Map();
-    const CHAT_STATE_TTL_MS = 60 * 60 * 1000;
-
-    function scheduleStateCleanup(chatId) {
-        if (chatCleanupTimers.has(chatId)) {
-            clearTimeout(chatCleanupTimers.get(chatId));
-        }
-        const timer = setTimeout(() => {
-            chatState.delete(chatId);
-            chatCleanupTimers.delete(chatId);
-            logger.debug({ chatId }, 'chatState: очищено состояние');
-        }, CHAT_STATE_TTL_MS);
-        chatCleanupTimers.set(chatId, timer);
-    }
-
-    function ensureState(chatId) {
-        if (!chatState.has(chatId)) {
-            chatState.set(chatId, { stack: [], selectedChannel: null, pendingAction: null, pendingPayload: null });
-        }
-        const state = chatState.get(chatId);
-        state.updatedAt = Date.now();
-        scheduleStateCleanup(chatId);
-        return state;
-    }
-
-    function setPendingAction(chatId, action, payload = null) {
-        const state = ensureState(chatId);
-        state.pendingAction = action;
-        state.pendingPayload = payload;
-    }
-
-    function resetPendingAction(chatId) {
-        const state = ensureState(chatId);
-        state.pendingAction = null;
-        state.pendingPayload = null;
-    }
-
-    function makeTwoColumnKeyboard(labels, { includeBack = true } = {}) {
-        const keyboard = [];
-        for (let i = 0; i < labels.length; i += 2) {
-            const row = [{ text: labels[i] }];
-            if (i + 1 < labels.length) row.push({ text: labels[i + 1] });
-            keyboard.push(row);
-        }
-        if (includeBack) {
-            keyboard.push([{ text: 'Назад' }]);
-        }
-        return keyboard;
-    }
-
-    function pushView(chatId, view) {
-        const state = ensureState(chatId);
-        state.stack.push(view);
-        logger.debug({ chatId, view }, 'pushView');
-    }
-
-    function popView(chatId) {
-        const state = ensureState(chatId);
-        const v = state.stack.pop();
-        logger.debug({ chatId, view: v }, 'popView');
-        return v;
-    }
-
-    function currentView(chatId) {
-        const state = ensureState(chatId);
-        const s = state.stack;
-        return s.length ? s[s.length - 1] : null;
-    }
-
-    function showMainMenu(chatId) {
-        // reset stack to main
-        const state = ensureState(chatId);
-        state.stack = ['main'];
-        state.selectedChannel = null;
-        resetPendingAction(chatId);
-        logger.debug({ chatId }, 'showMainMenu');
-        bot.sendMessage(chatId, 'Добро пожаловать, выберите действие:', {
-            reply_markup: {
-                keyboard: [
-                    [{ text: 'Телеканалы' }, { text: 'Генерация текста для эфира' }],
-                    [{ text: 'Что где лежит' }], [{ text: 'Где заполнить заявку на Дизайн' }]
-                ],
-                resize_keyboard: true
-            }
+async function getFileMap(force = false) {
+    const isFresh = Date.now() - fileMapCache.builtAt < FILE_MAP_TTL_MS && Object.keys(fileMapCache.map).length;
+    if (!force && isFresh) return fileMapCache;
+    if (!fileMapBuilding) {
+        fileMapBuilding = buildFileMap().finally(() => {
+            fileMapBuilding = null;
         });
     }
+    return fileMapBuilding;
+}
 
-    function showChannels(chatId) {
-        ensureState(chatId);
-        // push channels if not already top
-        if (currentView(chatId) !== 'channels') pushView(chatId, 'channels');
-        logger.debug({ chatId }, 'showChannels');
-        const keyboard = makeTwoColumnKeyboard(arrTv.map(c => c.name));
-        bot.sendMessage(chatId, 'Выберите нужный канал:', { reply_markup: { keyboard, resize_keyboard: true } });
+async function findFileEntry(channelName) {
+    if (!channelName) return null;
+    const { map, nameIndex } = await getFileMap();
+    if (map[channelName]) return map[channelName];
+    const k = normalizeKey(channelName);
+    const real = nameIndex[k];
+    if (real && map[real]) return map[real];
+    logger.warn({ channelName }, 'findFileEntry: канал не найден');
+    return null;
+}
+
+async function sendAsset(chatId, channelName, assetKey, caption) {
+    logger.info({ chatId, channel: channelName, assetKey }, 'sendAsset: запрос отправки');
+    const entry = await findFileEntry(channelName);
+    if (!entry) {
+        logger.warn({ chatId, channelName, assetKey }, 'sendAsset: отсутствует запись для канала');
+        return bot.sendMessage(chatId, 'Будет позже');
     }
-
-    // Подкнопки для 'Уфанет и пр' — отображаются как отдельный выбор
-    const ufanetSubs = ['Уфанет', 'Свос', 'Авантис', 'ССС'];
-
-    function showUfanetSubs(chatId) {
-        ensureState(chatId);
-        if (currentView(chatId) !== 'ufanet_subs') pushView(chatId, 'ufanet_subs');
-        logger.debug({ chatId }, 'showUfanetSubs');
-        const keyboard = [
-            [{ text: 'Уфанет' }, { text: 'Свос' }],
-            [{ text: 'Авантис' }, { text: 'ССС' }],
-            [{ text: 'Назад' }]
-        ];
-        bot.sendMessage(chatId, 'Выберите подраздел Уфанет:', { reply_markup: { keyboard, resize_keyboard: true } });
+    const rel = entry[assetKey];
+    if (!rel) {
+        logger.warn({ chatId, channelName, assetKey }, 'sendAsset: файлы для assetKey не найдены');
+        return bot.sendMessage(chatId, 'Будет позже');
     }
-
-    function showChannelSubmenu(chatId, channel) {
-        ensureState(chatId);
-        // если выбран корневой Уфанет — показываем подпункты
-        if (channel === 'Уфанет и пр') {
-            return showUfanetSubs(chatId);
+    if (Array.isArray(rel)) {
+        logger.info({ chatId, channel: channelName, assetKey, count: rel.length }, 'sendAsset: отправка нескольких файлов');
+        for (const p of rel) {
+            // p - абсолютный путь, но тоже считается от process.cwd()
+            await sendLocalFile(chatId, p, caption || `${channelName} — ${assetKey}`);
         }
+        return;
+    }
+    return sendLocalFile(chatId, rel, caption || `${channelName} — ${assetKey}`);
+}
 
-        const view = `channel:${channel}`;
-        if (currentView(chatId) !== view) pushView(chatId, view);
-        ensureState(chatId).selectedChannel = channel;
-        logger.info({ chatId, channel }, 'showChannelSubmenu');
-        const ch = arrTv.find(c => c.name === channel);
-        const labels = [];
-        if (ch) {
-            for (const subObj of ch.subname) {
-                for (const v of Object.values(subObj)) labels.push(v);
-            }
-        } else {
-            // fallback для суббрендов (например, Уфанет/Авантис), если нет определения в arrTv
-            labels.push('Логотип', 'Фирменный бланк', 'Брендбук', 'Шрифт');
+async function safeSendAsset(chatId, channelName, assetKey, caption) {
+    try {
+        return await sendAsset(chatId, channelName, assetKey, caption);
+    } catch (error) {
+        logger.error({ err: error, chatId, channel: channelName, assetKey }, 'safeSendAsset: ошибка отправки');
+        return bot.sendMessage(chatId, 'Не удалось отправить файл, попробуйте ещё раз позже.');
+    }
+}
+
+// минимальное состояние чата — выбранный канал
+const chatState = new Map();
+const chatCleanupTimers = new Map();
+const CHAT_STATE_TTL_MS = 60 * 60 * 1000;
+
+function scheduleStateCleanup(chatId) {
+    if (chatCleanupTimers.has(chatId)) {
+        clearTimeout(chatCleanupTimers.get(chatId));
+    }
+    const timer = setTimeout(() => {
+        chatState.delete(chatId);
+        chatCleanupTimers.delete(chatId);
+        logger.debug({ chatId }, 'chatState: очищено состояние');
+    }, CHAT_STATE_TTL_MS);
+    chatCleanupTimers.set(chatId, timer);
+}
+
+function ensureState(chatId) {
+    if (!chatState.has(chatId)) {
+        chatState.set(chatId, { stack: [], selectedChannel: null, pendingAction: null, pendingPayload: null });
+    }
+    const state = chatState.get(chatId);
+    state.updatedAt = Date.now();
+    scheduleStateCleanup(chatId);
+    return state;
+}
+
+function setPendingAction(chatId, action, payload = null) {
+    const state = ensureState(chatId);
+    state.pendingAction = action;
+    state.pendingPayload = payload;
+}
+
+function resetPendingAction(chatId) {
+    const state = ensureState(chatId);
+    state.pendingAction = null;
+    state.pendingPayload = null;
+}
+
+function makeTwoColumnKeyboard(labels, { includeBack = true } = {}) {
+    const keyboard = [];
+    for (let i = 0; i < labels.length; i += 2) {
+        const row = [{ text: labels[i] }];
+        if (i + 1 < labels.length) row.push({ text: labels[i + 1] });
+        keyboard.push(row);
+    }
+    if (includeBack) {
+        keyboard.push([{ text: 'Назад' }]);
+    }
+    return keyboard;
+}
+
+function pushView(chatId, view) {
+    const state = ensureState(chatId);
+    state.stack.push(view);
+    logger.debug({ chatId, view }, 'pushView');
+}
+
+function popView(chatId) {
+    const state = ensureState(chatId);
+    const v = state.stack.pop();
+    logger.debug({ chatId, view: v }, 'popView');
+    return v;
+}
+
+function currentView(chatId) {
+    const state = ensureState(chatId);
+    const s = state.stack;
+    return s.length ? s[s.length - 1] : null;
+}
+
+function showMainMenu(chatId) {
+    // reset stack to main
+    const state = ensureState(chatId);
+    state.stack = ['main'];
+    state.selectedChannel = null;
+    resetPendingAction(chatId);
+    logger.debug({ chatId }, 'showMainMenu');
+    bot.sendMessage(chatId, 'Добро пожаловать, выберите действие:', {
+        reply_markup: {
+            keyboard: [
+                [{ text: 'Телеканалы' }, { text: 'Генерация текста для эфира' }],
+                [{ text: 'Что где лежит' }], [{ text: 'Где заполнить заявку на Дизайн' }]
+            ],
+            resize_keyboard: true
         }
-        const keyboard = makeTwoColumnKeyboard(labels);
-        bot.sendMessage(chatId, `Выбран канал: ${channel}\nВыберите действие:`, { reply_markup: { keyboard, resize_keyboard: true } });
+    });
+}
+
+function showChannels(chatId) {
+    ensureState(chatId);
+    // push channels if not already top
+    if (currentView(chatId) !== 'channels') pushView(chatId, 'channels');
+    logger.debug({ chatId }, 'showChannels');
+    const keyboard = makeTwoColumnKeyboard(arrTv.map(c => c.name));
+    bot.sendMessage(chatId, 'Выберите нужный канал:', { reply_markup: { keyboard, resize_keyboard: true } });
+}
+
+// Подкнопки для 'Уфанет и пр' — отображаются как отдельный выбор
+const ufanetSubs = ['Уфанет', 'Свос', 'Авантис', 'ССС'];
+
+function showUfanetSubs(chatId) {
+    ensureState(chatId);
+    if (currentView(chatId) !== 'ufanet_subs') pushView(chatId, 'ufanet_subs');
+    logger.debug({ chatId }, 'showUfanetSubs');
+    const keyboard = [
+        [{ text: 'Уфанет' }, { text: 'Свос' }],
+        [{ text: 'Авантис' }, { text: 'ССС' }],
+        [{ text: 'Назад' }]
+    ];
+    bot.sendMessage(chatId, 'Выберите подраздел Уфанет:', { reply_markup: { keyboard, resize_keyboard: true } });
+}
+
+function showChannelSubmenu(chatId, channel) {
+    ensureState(chatId);
+    // если выбран корневой Уфанет — показываем подпункты
+    if (channel === 'Уфанет и пр') {
+        return showUfanetSubs(chatId);
     }
 
-    function showWhatWhere(chatId) {
-        ensureState(chatId);
-        if (currentView(chatId) !== 'what_where') pushView(chatId, 'what_where');
-        logger.debug({ chatId }, 'showWhatWhere');
+    const view = `channel:${channel}`;
+    if (currentView(chatId) !== view) pushView(chatId, view);
+    ensureState(chatId).selectedChannel = channel;
+    logger.info({ chatId, channel }, 'showChannelSubmenu');
+    const ch = arrTv.find(c => c.name === channel);
+    const labels = [];
+    if (ch) {
+        for (const subObj of ch.subname) {
+            for (const v of Object.values(subObj)) labels.push(v);
+        }
+    } else {
+        // fallback для суббрендов (например, Уфанет/Авантис), если нет определения в arrTv
+        labels.push('Логотип', 'Фирменный бланк', 'Брендбук', 'Шрифт');
+    }
+    const keyboard = makeTwoColumnKeyboard(labels);
+    bot.sendMessage(chatId, `Выбран канал: ${channel}\nВыберите действие:`, { reply_markup: { keyboard, resize_keyboard: true } });
+}
+
+function showWhatWhere(chatId) {
+    ensureState(chatId);
+    if (currentView(chatId) !== 'what_where') pushView(chatId, 'what_where');
+    logger.debug({ chatId }, 'showWhatWhere');
+    const keyboard = [
+        [{ text: 'Проекты дизайнеров' }, { text: 'Фотобанк' }],
+        [{ text: 'Шаблоны для новостей в фигме' }],
+        [{ text: 'Назад' }]
+    ];
+    bot.sendMessage(chatId, 'Что вы хотите найти?', { reply_markup: { keyboard, resize_keyboard: true } });
+}
+
+function showLogoOptions(chatId) {
+    ensureState(chatId);
+    if (currentView(chatId) !== 'logo_options') pushView(chatId, 'logo_options');
+    logger.debug({ chatId }, 'showLogoOptions');
+    const keyboard = makeTwoColumnKeyboard(['Цветной', 'белый', 'черный', 'вектор']);
+    bot.sendMessage(chatId, 'Какой лого вам нужен?\nЛоготипы сразу будут в двух вариантах с прозрачным и белым фоном', { reply_markup: { keyboard, resize_keyboard: true } });
+}
+
+function promptEfirText(chatId, { reminder } = {}) {
+    ensureState(chatId);
+    if (currentView(chatId) !== 'efir_generate') pushView(chatId, 'efir_generate');
+    setPendingAction(chatId, 'efir_text');
+    const keyboard = [
+        [{ text: 'Отмена' }],
+        [{ text: 'Назад' }]
+    ];
+    bot.sendMessage(chatId, reminder || 'Введите текст, который нужно разместить на плашке (до 2 строк).', {
+        reply_markup: { keyboard, resize_keyboard: true }
+    });
+}
+
+async function generateEfirImage(chatId, text) {
+    const trimmed = text.trim();
+    if (!trimmed) {
+        bot.sendMessage(chatId, 'Текст не должен быть пустым. Попробуйте снова.');
+        promptEfirText(chatId, { reminder: 'Введите текст для плашки:' });
+        return;
+    }
+
+    try {
+        const buffer = await renderEfirGraphic(trimmed);
+        await sendPhotoFromBuffer(chatId, buffer, 'Черновик плашки');
+        setPendingAction(chatId, 'efir_edit', { lastText: trimmed });
         const keyboard = [
-            [{ text: 'Проекты дизайнеров' }, { text: 'Фотобанк' }],
-            [{ text: 'Шаблоны для новостей в фигме' }],
+            [{ text: 'Изменить текст' }, { text: 'Готово' }],
             [{ text: 'Назад' }]
         ];
-        bot.sendMessage(chatId, 'Что вы хотите найти?', { reply_markup: { keyboard, resize_keyboard: true } });
-    }
-
-    function showLogoOptions(chatId) {
-        ensureState(chatId);
-        if (currentView(chatId) !== 'logo_options') pushView(chatId, 'logo_options');
-        logger.debug({ chatId }, 'showLogoOptions');
-        const keyboard = makeTwoColumnKeyboard(['Цветной', 'белый', 'черный', 'вектор']);
-        bot.sendMessage(chatId, 'Какой лого вам нужен?\nЛоготипы сразу будут в двух вариантах с прозрачным и белым фоном', { reply_markup: { keyboard, resize_keyboard: true } });
-    }
-
-    function promptEfirText(chatId, { reminder } = {}) {
-        ensureState(chatId);
-        if (currentView(chatId) !== 'efir_generate') pushView(chatId, 'efir_generate');
-        setPendingAction(chatId, 'efir_text');
-        const keyboard = [
-            [{ text: 'Отмена' }],
-            [{ text: 'Назад' }]
-        ];
-        bot.sendMessage(chatId, reminder || 'Введите текст, который нужно разместить на плашке (до 2 строк).', {
+        bot.sendMessage(chatId, 'Если нужно изменить текст, отправьте новый вариант или нажмите «Изменить текст». Когда всё готово — нажмите «Готово».', {
             reply_markup: { keyboard, resize_keyboard: true }
         });
+    } catch (err) {
+        logger.error({ err }, 'generateEfirImage: ошибка рендеринга');
+        bot.sendMessage(chatId, 'Не удалось создать изображение. Попробуйте снова позже.');
+        promptEfirText(chatId, { reminder: 'Введите текст для плашки:' });
     }
-
-    async function generateEfirImage(chatId, text) {
-        const trimmed = text.trim();
-        if (!trimmed) {
-            bot.sendMessage(chatId, 'Текст не должен быть пустым. Попробуйте снова.');
-            promptEfirText(chatId, { reminder: 'Введите текст для плашки:' });
-            return;
-        }
-
-        try {
-            const buffer = await renderEfirGraphic(trimmed);
-            await sendPhotoFromBuffer(chatId, buffer, 'Черновик плашки');
-            setPendingAction(chatId, 'efir_edit', { lastText: trimmed });
-            const keyboard = [
-                [{ text: 'Изменить текст' }, { text: 'Готово' }],
-                [{ text: 'Назад' }]
-            ];
-            bot.sendMessage(chatId, 'Если нужно изменить текст, отправьте новый вариант или нажмите «Изменить текст». Когда всё готово — нажмите «Готово».', {
-                reply_markup: { keyboard, resize_keyboard: true }
-            });
-        } catch (err) {
-            logger.error({ err }, 'generateEfirImage: ошибка рендеринга');
-            bot.sendMessage(chatId, 'Не удалось создать изображение. Попробуйте снова позже.');
-            promptEfirText(chatId, { reminder: 'Введите текст для плашки:' });
-        }
-    }
-
-
-
-
+}
 
 // Универсальный обработчик сообщений для обработки выбора канала и подменю
 bot.on('message', async (msg) => {
@@ -757,18 +718,13 @@ bot.on('message', async (msg) => {
         return;
     }
 
-    // Если мы прямо обрабатываем конкретные кнопки (например, 'Логотип'),
-    // то выходим, чтобы избежать дублирования ответов (они обрабатываются в onText выше).
     const skipDirect = ['Логотип', 'Проекты дизайнеров', 'Фотобанк', 'Шаблоны для новостей в фигме', 'Где заполнить заявку на Дизайн'];
-    // добавим варианты логотипа и служебные кнопки в исключения
     const extraSkip = ['Цветной', 'цветной', 'белый', 'черный', 'вектор', 'Изменить текст', 'Готово', 'Отмена'];
     if (extraSkip.includes(text)) return;
     if (skipDirect.includes(text)) return;
 
-    // Если пользователь нажал "Назад" в любой момент - показать главное меню
     if (text === 'Назад') {
         logger.debug({ chatId }, 'user pressed Назад');
-        // убираем текущее представление и показываем предыдущее
         popView(chatId);
         const prev = currentView(chatId);
         if (!prev || prev === 'main') {
@@ -786,20 +742,17 @@ bot.on('message', async (msg) => {
             const ch = prev.split(':')[1];
             showChannelSubmenu(chatId, ch);
         } else {
-            // fallback
             showMainMenu(chatId);
         }
         return;
     }
 
-    // Если пользователь нажал один из подпунктов Уфанет — сразу открываем его подменю
     if (ufanetSubs.includes(text)) {
         showChannelSubmenu(chatId, text);
         logger.info({ chatId, channel: text }, 'user selected ufanet sub');
         return;
     }
 
-    // Проверяем, совпадает ли текст с названием какого-либо канала
     const channel = arrTv.find(c => c.name === text);
     if (channel) {
         showChannelSubmenu(chatId, channel.name);
@@ -807,19 +760,16 @@ bot.on('message', async (msg) => {
         return;
     }
 
-    // Проверяем, совпадает ли текст с любым под-пунктом во всех каналах
     let found = false;
     for (const c of arrTv) {
         for (const subObj of c.subname) {
             for (const v of Object.values(subObj)) {
                 if (v === text) {
                     found = true;
-                    // если пользователь нажал один из известных подпунктов — попробуем отправить файл
                     const state = chatState.get(chatId);
                     const channelName = (state && state.selectedChannel) || c.name;
                     const lowercase = v.toLowerCase();
                     if (lowercase.includes('логотип')) {
-                        // отправим цветной логотип по умолчанию (пользователь сможет выбрать вариант после)
                         safeSendAsset(chatId, channelName, 'logo_color', `Логотип ${channelName}`);
                     } else if (lowercase.includes('фирмен') || lowercase.includes('бланк')) {
                         safeSendAsset(chatId, channelName, 'firmblank', `Фирменный бланк ${channelName}`);
@@ -837,10 +787,4 @@ bot.on('message', async (msg) => {
         }
         if (found) break;
     }
-    // позволить другим обработчикам (например, /start) продолжить обработку
 });
-        
-
-
-
-         
