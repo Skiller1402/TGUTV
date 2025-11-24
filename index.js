@@ -412,7 +412,7 @@ function normalizeKey(name) {
     return name.toString().toLowerCase().replace(/[^a-z0-9а-яё]+/g, '');
 }
 
-const FILES_ROOT = resolveFromRoot('files');
+const FILES_ROOT = resolveFromRoot('Files');
 const FILE_MAP_TTL_MS = 5 * 60 * 1000;
 let fileMapCache = { map: {}, nameIndex: {}, builtAt: 0 };
 let fileMapBuilding = null;
