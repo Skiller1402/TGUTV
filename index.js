@@ -329,6 +329,26 @@ bot.onText(/Шаблоны для новостей в фигме/, (msg) => {
     bot.sendMessage(chatId, message, { parse_mode: 'HTML', disable_web_page_preview: false });
 });
 
+// Команда для ручного пересканирования файлов (debug/admin)
+bot.onText(/\/reload-files/, async (msg) => {
+    const chatId = msg.chat.id;
+    logger.info({ chatId }, 'Команда /reload-files: запущена');
+    bot.sendMessage(chatId, 'Начинаю перескан файлов...');
+    try {
+        const result = await getFileMap(true);
+        const channels = Object.keys(result.map || {});
+        bot.sendMessage(chatId, `Перескан завершён. Каналов в карте: ${channels.length}`);
+        // небольшой список первых 50 каналов для быстрого осмотра
+        if (channels.length) {
+            const sample = channels.slice(0, 50).join(', ');
+            bot.sendMessage(chatId, `Примеры каналов: ${sample}`);
+        }
+    } catch (err) {
+        logger.error({ err, chatId }, '/reload-files: ошибка при перескане');
+        bot.sendMessage(chatId, `Ошибка при перескане: ${err && err.message ? err.message : err}`);
+    }
+});
+
 bot.onText(/Логотип/, (msg) => {
     const chatId = msg.chat.id;
     logger.info({ chatId }, 'Триггер: Логотип');
@@ -503,13 +523,29 @@ async function getFileMap(force = false) {
 
 async function findFileEntry(channelName) {
     if (!channelName) return null;
-    const { map, nameIndex } = await getFileMap();
+    // Получаем кеш (если свежий)
+    let { map, nameIndex } = await getFileMap();
     if (map[channelName]) return map[channelName];
     const k = normalizeKey(channelName);
     const real = nameIndex[k];
     if (real && map[real]) return map[real];
-    logger.warn({ channelName }, 'findFileEntry: канал не найден');
+
+    // Если не нашли — форсируем повторный скан (возможно файловая система изменилась)
+    logger.info({ channelName }, 'findFileEntry: запись не найдена, форсируем перескан файлов');
+    console.log('findFileEntry: entry не найдено для', channelName, '- форсим перескан файлами');
+    ({ map, nameIndex } = await getFileMap(true));
+
+    if (map[channelName]) return map[channelName];
+    const real2 = nameIndex[k];
+    if (real2 && map[real2]) return map[real2];
+
+    // Диагностика: выведем доступные ключи для отладки
+    const mapKeys = Object.keys(map || {});
+    const nameIndexKeys = Object.keys(nameIndex || {});
+    logger.warn({ channelName, mapKeysCount: mapKeys.length }, 'findFileEntry: канал не найден после пересканирования');
     console.log('Не найден канал в fileMap', channelName);
+    console.log('Доступные ключи fileMap:', mapKeys.slice(0, 200));
+    console.log('Доступные нормализованные имена в nameIndex:', nameIndexKeys.slice(0, 200));
     return null;
 }
 
