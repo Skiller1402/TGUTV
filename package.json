@@ -12,7 +12,6 @@
   "keywords": [],
   "author": "",
   "license": "ISC",
-  "type": "module",
   "dependencies": {
     "@napi-rs/canvas": "^0.1.58",
     "dotenv": "^17.2.3",

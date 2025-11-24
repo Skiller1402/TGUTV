@@ -11,7 +11,13 @@ const { promises: fsPromises } = fs;
 
 // Глобальный cwd при старте (можно использовать напрямую)
 const CWD = process.cwd();
-const absFromCwd = (p) => path.isAbsolute(p) ? p : path.join(CWD, p);
+const absFromCwd = (p) => {
+    console.log('НАШ ПУТЬ КВД PPPPPP', p)
+    return path.isAbsolute(p) ? p : path.join(CWD, p)
+};
+
+
+console.log('НАШ ПУТЬ КВД', CWD)
 
 const arrTv = [
     {
