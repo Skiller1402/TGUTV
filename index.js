@@ -7,18 +7,15 @@ import os from 'os';
 import logger from './logger.js';
 import { renderEfirGraphic } from './templateRenderer.js';
 import { resolveFromRoot, PROJECT_ROOT } from './utils/paths.js';
-
-
+// Для промисов fs
+const fsPromises = fs.promises;
 
 // Глобальный cwd при старте (можно использовать напрямую)
-// const CWD = process.cwd();
+const CWD = process.cwd();
 // const absFromCwd = (p) => {
 //     console.log('НАШ ПУТЬ КВД PPPPPP', p)
 //     return path.isAbsolute(p) ? p : path.join(CWD, p)
 // };
-
-
-
 
 const arrTv = [
     {
@@ -138,7 +135,7 @@ try {
     if (fs.existsSync(FILE_ID_DB)) {
         const raw = fs.readFileSync(FILE_ID_DB, 'utf8') || '{}';
         fileIdCache = JSON.parse(raw);
-        console.log('НАШ КЕШ ФАЙЛ ID', fileIdCache)
+        console.log('НАШ КЕШ ФАЙЛ ID', fileIdCache);
     }
 } catch (e) {
     logger.warn({ err: e }, 'Не удалось загрузить кеш file_id');
@@ -187,9 +184,11 @@ async function sendLocalFile(chatId, relativePath, caption) {
     } catch (err) {
         if (err && err.code === 'ENOENT') {
             logger.warn({ chatId, path: absPath }, 'sendLocalFile: файл не найден');
+            console.log('Не найден файл', absPath);
             return bot.sendMessage(chatId, `Файл не найден: ${relativePath}`);
         }
         logger.error({ err, chatId, path: absPath }, 'sendLocalFile: не удалось получить информацию о файле');
+        console.log('Ошибка получения информации файла', absPath, err);
         return bot.sendMessage(chatId, 'Не удалось открыть файл для отправки.');
     }
 
@@ -198,9 +197,11 @@ async function sendLocalFile(chatId, relativePath, caption) {
     if (cachedFileId) {
         try {
             logger.debug({ chatId, cacheKey }, 'sendLocalFile: отправка по cached file_id');
+            console.log('Отправка документа по кэшированному file_id', cachedFileId);
             return await withSendSlot(() => bot.sendDocument(chatId, cachedFileId, { caption }));
         } catch (err) {
             logger.warn({ err, chatId, cacheKey }, 'sendLocalFile: ошибка при отправке по cached file_id, будем загружать файл заново');
+            console.log('Ошибка при отправке по cached file_id. Будем грузить файл заново.', err);
         }
     }
 
@@ -213,9 +214,11 @@ async function sendLocalFile(chatId, relativePath, caption) {
             persistFileIdCache();
         }
         logger.info({ chatId, path: absPath }, 'sendLocalFile: файл отправлен');
+        console.log('Файл успешно отправлен', absPath, 'file_id:', fileId);
         return sent;
     } catch (e) {
         logger.error({ err: e, chatId, path: absPath }, 'sendLocalFile: ошибка при отправке файла');
+        console.log('Ошибка при отправке файла', absPath, e);
         return bot.sendMessage(chatId, `Ошибка при отправке файла: ${e && e.message ? e.message : e}`);
     }
 }
@@ -225,17 +228,20 @@ async function sendPhotoFromBuffer(chatId, buffer, caption, filename = 'efir-tem
     const tmpFile = path.join(tmpDir, filename);
     try {
         await fsPromises.writeFile(tmpFile, buffer);
+        console.log('Временный PNG файл создан для отправки', tmpFile);
         await withSendSlot(() => bot.sendPhoto(chatId, tmpFile, { caption }, { filename, contentType: 'image/png' }));
     } finally {
         try {
             await fsPromises.unlink(tmpFile);
         } catch (err) {
             logger.warn({ err, path: tmpFile }, 'sendPhotoFromBuffer: не удалось удалить временный файл');
+            console.log('Не удалось удалить временный PNG файл', tmpFile, err);
         }
         try {
             await fsPromises.rm(tmpDir, { recursive: true, force: true });
         } catch (err) {
             logger.warn({ err, path: tmpDir }, 'sendPhotoFromBuffer: не удалось удалить временную папку');
+            console.log('Не удалось удалить временную папку', tmpDir, err);
         }
     }
 }
@@ -243,24 +249,28 @@ async function sendPhotoFromBuffer(chatId, buffer, caption, filename = 'efir-tem
 bot.onText(/\/start/, (msg) => {
     const chatId = msg.chat.id;
     logger.info({ chatId }, 'Триггер: /start');
+    console.log('Пользователь стартанул бота', chatId);
     showMainMenu(chatId);
 });
 
 bot.onText(/Телеканалы/, (msg) => {
     const chatId = msg.chat.id;
     logger.info({ chatId }, 'Триггер: Телеканалы');
+    console.log('Пользователь выбрал Телеканалы', chatId);
     showChannels(chatId);
 });
 
 bot.onText(/Генерация текста для эфира/, (msg) => {
     const chatId = msg.chat.id;
     logger.info({ chatId }, 'Триггер: Генерация текста для эфира');
+    console.log('Генератор плашек: вызов пользователем', chatId);
     promptEfirText(chatId);
 });
 
 bot.onText(/Что где лежит/, (msg) => {
     const chatId = msg.chat.id;
     logger.info({ chatId }, 'Триггер: Что где лежит');
+    console.log('Пользователь выбрал Что где лежит', chatId);
     showWhatWhere(chatId);
 });
 
@@ -268,14 +278,22 @@ bot.onText(/Проекты дизайнеров/, (msg) => {
     const chatId = msg.chat.id;
     logger.info({ chatId }, 'Триггер: Проекты дизайнеров');
     const message = "\\utv2.core.ufanet.ru\\UTV\\Дизайн";
-    bot.sendMessage(chatId, message).catch(err => logger.warn({ err, chatId }, 'Ошибка отправки текста для Проекты дизайнеров'));
+    console.log('Отправка ссылки на проекты дизайнеров в чат', chatId);
+    bot.sendMessage(chatId, message).catch(err => {
+        logger.warn({ err, chatId }, 'Ошибка отправки текста для Проекты дизайнеров');
+        console.log('Ошибка отправки текста для Проекты дизайнеров', err);
+    });
 });
 
 bot.onText(/Фотобанк/, (msg) => {
     const chatId = msg.chat.id;
     logger.info({ chatId }, 'Триггер: Фотобанк');
     const message = "\\utv2.core.ufanet.ru\\UTV\\Фото Банк";
-    bot.sendMessage(chatId, message).catch(err => logger.warn({ err, chatId }, 'Ошибка отправки текста для фотобанк'));
+    console.log('Отправка ссылки на фотобанк пользователю', chatId);
+    bot.sendMessage(chatId, message).catch(err => {
+        logger.warn({ err, chatId }, 'Ошибка отправки текста для фотобанк');
+        console.log('Ошибка отправки текста для фотобанк', err);
+    });
 });
 
 bot.onText(/Шаблоны для новостей в фигме/, (msg) => {
@@ -284,18 +302,21 @@ bot.onText(/Шаблоны для новостей в фигме/, (msg) => {
     const message = `• <a href="https://www.figma.com/design/2e4JbnCKqyWj15QhkaRXlv/%D1%88%D0%B0%D0%B1%D0%BB%D0%BE%D0%BD-%D1%83%D0%BB%D0%B8%D1%86%D1%8B-%D0%B8-%D0%B2%D0%BE%D0%B4%D0%B0?node-id=0-1&t=2tBPxMNSdIYW4xoL-0">Перекрытия</a>\n` +
         `• <a href="https://www.figma.com/design/5uuK7vwboEau7XDFGpcUPi/%D0%98%D1%82%D0%BE%D0%B3%D0%B8?node-id=0-1&p=f&t=2p1sR8sLebWv0P3D-0">Обложки</a>\n` +
         `• <a href="https://www.figma.com/design/asJoqHwnNuTWrw77Fefek8/%D0%9D%D0%BE%D0%B2%D0%BE%D1%81%D1%82%D0%B8_%D0%BF%D0%BB%D0%B0%D1%88%D0%BA%D0%B8?node-id=0-1&p=f&t=bFErVjQ1qsO9EPwq-0">Плашки подписи и др</a>`;
+    console.log('Отправка шаблонов для новостей в фигме', chatId);
     bot.sendMessage(chatId, message, { parse_mode: 'HTML', disable_web_page_preview: false });
 });
 
 bot.onText(/Логотип/, (msg) => {
     const chatId = msg.chat.id;
     logger.info({ chatId }, 'Триггер: Логотип');
+    console.log('Пользователь выбрал пункт Логотип', chatId);
     showLogoOptions(chatId);
 });
 
 bot.onText(/Где заполнить заявку на Дизайн/, (msg) => {
     const chatId = msg.chat.id;
     logger.info({ chatId }, 'Триггер: Где заполнить заявку на Дизайн');
+    console.log('Пользователь спросил где заполнить заявку на дизайн', chatId);
     bot.sendMessage(chatId, 'А вот же\nhttps://utv-editors.tw1.su/');
 });
 
@@ -304,7 +325,10 @@ bot.onText(/Цветной|цветной/, (msg) => {
     const chatId = msg.chat.id;
     const state = chatState.get(chatId);
     const channelName = state && state.selectedChannel;
-    if (!channelName) return bot.sendMessage(chatId, 'Сначала выберите канал.');
+    if (!channelName) {
+        console.log('Пользователь запросил логотип-цветной до выбора канала');
+        return bot.sendMessage(chatId, 'Сначала выберите канал.');
+    }
     return safeSendAsset(chatId, channelName, 'logo_color', `Логотип — цветной (${channelName})`);
 });
 
@@ -312,7 +336,10 @@ bot.onText(/белый/, (msg) => {
     const chatId = msg.chat.id;
     const state = chatState.get(chatId);
     const channelName = state && state.selectedChannel;
-    if (!channelName) return bot.sendMessage(chatId, 'Сначала выберите канал.');
+    if (!channelName) {
+        console.log('Пользователь запросил белый логотип до выбора канала');
+        return bot.sendMessage(chatId, 'Сначала выберите канал.');
+    }
     return safeSendAsset(chatId, channelName, 'logo_white', `Логотип — белый (${channelName})`);
 });
 
@@ -320,7 +347,10 @@ bot.onText(/черный/, (msg) => {
     const chatId = msg.chat.id;
     const state = chatState.get(chatId);
     const channelName = state && state.selectedChannel;
-    if (!channelName) return bot.sendMessage(chatId, 'Сначала выберите канал.');
+    if (!channelName) {
+        console.log('Пользователь запросил черный логотип до выбора канала');
+        return bot.sendMessage(chatId, 'Сначала выберите канал.');
+    }
     return safeSendAsset(chatId, channelName, 'logo_black', `Логотип — черный (${channelName})`);
 });
 
@@ -328,7 +358,10 @@ bot.onText(/вектор/, (msg) => {
     const chatId = msg.chat.id;
     const state = chatState.get(chatId);
     const channelName = state && state.selectedChannel;
-    if (!channelName) return bot.sendMessage(chatId, 'Сначала выберите канал.');
+    if (!channelName) {
+        console.log('Пользователь запросил векторный логотип до выбора канала');
+        return bot.sendMessage(chatId, 'Сначала выберите канал.');
+    }
     return safeSendAsset(chatId, channelName, 'logo_vector', `Логотип — вектор (${channelName})`);
 });
 
@@ -347,6 +380,7 @@ async function readDirSafe(dir) {
     } catch (err) {
         if (err && err.code !== 'ENOENT') {
             logger.warn({ err, dir }, 'readDirSafe: не удалось прочитать каталог');
+            console.log('Ошибка чтения директории', dir, err);
         }
         return [];
     }
@@ -365,6 +399,7 @@ async function listFilesSafe(dir) {
 
 async function buildFileMap() {
     logger.info({ base: FILES_ROOT }, 'buildFileMap: старт асинхронного сканирования');
+    console.log('Старт сканирования файлов в', FILES_ROOT);
     const map = {};
     const nameIndex = {};
     const channels = await readDirSafe(FILES_ROOT);
@@ -394,6 +429,7 @@ async function buildFileMap() {
                 if (files.length) {
                     map[dirent.name][assetKey] = files.map(f => resolveFromRoot(path.relative(CWD, f)));
                     logger.debug({ channel: dirent.name, assetKey, count: files.length }, 'buildFileMap: найден asset');
+                    console.log('Найден asset для канала', dirent.name, assetKey, files.length);
                 }
                 continue;
             }
@@ -420,12 +456,14 @@ async function buildFileMap() {
                 if (files2.length) {
                     map[child.name][assetKey2] = files2.map(f => resolveFromRoot(path.relative(CWD, f)));
                     logger.debug({ channel: child.name, assetKey: assetKey2, count: files2.length }, 'buildFileMap: найден asset у суббренда');
+                    console.log('Найден asset у суббренда', child.name, assetKey2, files2.length);
                 }
             }
         }
     }
     fileMapCache = { map, nameIndex, builtAt: Date.now() };
     logger.info({ channels: Object.keys(map).length }, 'buildFileMap: завершено');
+    console.log('Сканирование файлов завершено, всего каналов:', Object.keys(map).length);
     return fileMapCache;
 }
 
@@ -448,23 +486,28 @@ async function findFileEntry(channelName) {
     const real = nameIndex[k];
     if (real && map[real]) return map[real];
     logger.warn({ channelName }, 'findFileEntry: канал не найден');
+    console.log('Не найден канал в fileMap', channelName);
     return null;
 }
 
 async function sendAsset(chatId, channelName, assetKey, caption) {
     logger.info({ chatId, channel: channelName, assetKey }, 'sendAsset: запрос отправки');
+    console.log('sendAsset вызван для', channelName, assetKey);
     const entry = await findFileEntry(channelName);
     if (!entry) {
         logger.warn({ chatId, channelName, assetKey }, 'sendAsset: отсутствует запись для канала');
+        console.log('Нет entry для канала', channelName);
         return bot.sendMessage(chatId, 'Будет позже');
     }
     const rel = entry[assetKey];
     if (!rel) {
         logger.warn({ chatId, channelName, assetKey }, 'sendAsset: файлы для assetKey не найдены');
+        console.log('Нет файла для assetKey', assetKey, 'в', channelName);
         return bot.sendMessage(chatId, 'Будет позже');
     }
     if (Array.isArray(rel)) {
         logger.info({ chatId, channel: channelName, assetKey, count: rel.length }, 'sendAsset: отправка нескольких файлов');
+        console.log('Отправка нескольких файлов:', rel.length, channelName, assetKey);
         for (const p of rel) {
             await sendLocalFile(chatId, p, caption || `${channelName} — ${assetKey}`);
         }
@@ -478,6 +521,7 @@ async function safeSendAsset(chatId, channelName, assetKey, caption) {
         return await sendAsset(chatId, channelName, assetKey, caption);
     } catch (error) {
         logger.error({ err: error, chatId, channel: channelName, assetKey }, 'safeSendAsset: ошибка отправки');
+        console.log('Ошибка в safeSendAsset', channelName, assetKey, error);
         return bot.sendMessage(chatId, 'Не удалось отправить файл, попробуйте ещё раз позже.');
     }
 }
@@ -495,6 +539,7 @@ function scheduleStateCleanup(chatId) {
         chatState.delete(chatId);
         chatCleanupTimers.delete(chatId);
         logger.debug({ chatId }, 'chatState: очищено состояние');
+        console.log('Очищено состояние для чата', chatId);
     }, CHAT_STATE_TTL_MS);
     chatCleanupTimers.set(chatId, timer);
 }
@@ -502,6 +547,7 @@ function scheduleStateCleanup(chatId) {
 function ensureState(chatId) {
     if (!chatState.has(chatId)) {
         chatState.set(chatId, { stack: [], selectedChannel: null, pendingAction: null, pendingPayload: null });
+        console.log('Создано новое состояние для чата', chatId);
     }
     const state = chatState.get(chatId);
     state.updatedAt = Date.now();
@@ -513,12 +559,14 @@ function setPendingAction(chatId, action, payload = null) {
     const state = ensureState(chatId);
     state.pendingAction = action;
     state.pendingPayload = payload;
+    console.log('Установлено ожидаемое действие в чате', chatId, action, payload);
 }
 
 function resetPendingAction(chatId) {
     const state = ensureState(chatId);
     state.pendingAction = null;
     state.pendingPayload = null;
+    console.log('Сброшено ожидаемое действие в чате', chatId);
 }
 
 function makeTwoColumnKeyboard(labels, { includeBack = true } = {}) {
@@ -538,12 +586,14 @@ function pushView(chatId, view) {
     const state = ensureState(chatId);
     state.stack.push(view);
     logger.debug({ chatId, view }, 'pushView');
+    console.log('pushView', chatId, view);
 }
 
 function popView(chatId) {
     const state = ensureState(chatId);
     const v = state.stack.pop();
     logger.debug({ chatId, view: v }, 'popView');
+    console.log('popView', chatId, v);
     return v;
 }
 
@@ -560,6 +610,7 @@ function showMainMenu(chatId) {
     state.selectedChannel = null;
     resetPendingAction(chatId);
     logger.debug({ chatId }, 'showMainMenu');
+    console.log('Показываем главное меню', chatId);
     bot.sendMessage(chatId, 'Добро пожаловать, выберите действие:', {
         reply_markup: {
             keyboard: [
@@ -575,6 +626,7 @@ function showChannels(chatId) {
     ensureState(chatId);
     if (currentView(chatId) !== 'channels') pushView(chatId, 'channels');
     logger.debug({ chatId }, 'showChannels');
+    console.log('Показываем список каналов', chatId);
     const keyboard = makeTwoColumnKeyboard(arrTv.map(c => c.name));
     bot.sendMessage(chatId, 'Выберите нужный канал:', { reply_markup: { keyboard, resize_keyboard: true } });
 }
@@ -585,6 +637,7 @@ function showUfanetSubs(chatId) {
     ensureState(chatId);
     if (currentView(chatId) !== 'ufanet_subs') pushView(chatId, 'ufanet_subs');
     logger.debug({ chatId }, 'showUfanetSubs');
+    console.log('Показываем подразделения Уфанет', chatId);
     const keyboard = [
         [{ text: 'Уфанет' }, { text: 'Свос' }],
         [{ text: 'Авантис' }, { text: 'ССС' }],
@@ -596,6 +649,7 @@ function showUfanetSubs(chatId) {
 function showChannelSubmenu(chatId, channel) {
     ensureState(chatId);
     if (channel === 'Уфанет и пр') {
+        console.log('Показ подраздела Уфанет и пр', chatId);
         return showUfanetSubs(chatId);
     }
 
@@ -603,6 +657,7 @@ function showChannelSubmenu(chatId, channel) {
     if (currentView(chatId) !== view) pushView(chatId, view);
     ensureState(chatId).selectedChannel = channel;
     logger.info({ chatId, channel }, 'showChannelSubmenu');
+    console.log('Показываем подменю канала', channel, chatId);
     const ch = arrTv.find(c => c.name === channel);
     const labels = [];
     if (ch) {
@@ -620,6 +675,7 @@ function showWhatWhere(chatId) {
     ensureState(chatId);
     if (currentView(chatId) !== 'what_where') pushView(chatId, 'what_where');
     logger.debug({ chatId }, 'showWhatWhere');
+    console.log('Показываем меню "Что где лежит"', chatId);
     const keyboard = [
         [{ text: 'Проекты дизайнеров' }, { text: 'Фотобанк' }],
         [{ text: 'Шаблоны для новостей в фигме' }],
@@ -632,6 +688,7 @@ function showLogoOptions(chatId) {
     ensureState(chatId);
     if (currentView(chatId) !== 'logo_options') pushView(chatId, 'logo_options');
     logger.debug({ chatId }, 'showLogoOptions');
+    console.log('Показываем варианты логотипов', chatId);
     const keyboard = makeTwoColumnKeyboard(['Цветной', 'белый', 'черный', 'вектор']);
     bot.sendMessage(chatId, 'Какой лого вам нужен?\nЛоготипы сразу будут в двух вариантах с прозрачным и белым фоном', { reply_markup: { keyboard, resize_keyboard: true } });
 }
@@ -640,6 +697,7 @@ function promptEfirText(chatId, { reminder } = {}) {
     ensureState(chatId);
     if (currentView(chatId) !== 'efir_generate') pushView(chatId, 'efir_generate');
     setPendingAction(chatId, 'efir_text');
+    console.log('Ожидаем ввод текста для плашки', chatId);
     const keyboard = [
         [{ text: 'Отмена' }],
         [{ text: 'Назад' }]
@@ -654,11 +712,13 @@ async function generateEfirImage(chatId, text) {
     if (!trimmed) {
         bot.sendMessage(chatId, 'Текст не должен быть пустым. Попробуйте снова.');
         promptEfirText(chatId, { reminder: 'Введите текст для плашки:' });
+        console.log('Пользователь отправил пустой текст для плашки', chatId);
         return;
     }
 
     try {
         const buffer = await renderEfirGraphic(trimmed);
+        console.log('Сгенерирован графический буфер для плашки', chatId);
         await sendPhotoFromBuffer(chatId, buffer, 'Черновик плашки');
         setPendingAction(chatId, 'efir_edit', { lastText: trimmed });
         const keyboard = [
@@ -670,6 +730,7 @@ async function generateEfirImage(chatId, text) {
         });
     } catch (err) {
         logger.error({ err }, 'generateEfirImage: ошибка рендеринга');
+        console.log('Ошибка рендеринга плашки', chatId, err);
         bot.sendMessage(chatId, 'Не удалось создать изображение. Попробуйте снова позже.');
         promptEfirText(chatId, { reminder: 'Введите текст для плашки:' });
     }
@@ -680,6 +741,7 @@ bot.on('message', async (msg) => {
     const text = msg.text;
 
     logger.debug({ chatId, text }, 'incoming message');
+    console.log('Получено сообщение', chatId, text);
 
     if (!text) return;
     const state = ensureState(chatId);
@@ -722,6 +784,7 @@ bot.on('message', async (msg) => {
         logger.debug({ chatId }, 'user pressed Назад');
         popView(chatId);
         const prev = currentView(chatId);
+        console.log('Нажата кнопка "Назад", предыдущий view:', prev);
         if (!prev || prev === 'main') {
             showMainMenu(chatId);
         } else if (prev === 'channels') {
@@ -745,6 +808,7 @@ bot.on('message', async (msg) => {
     if (ufanetSubs.includes(text)) {
         showChannelSubmenu(chatId, text);
         logger.info({ chatId, channel: text }, 'user selected ufanet sub');
+        console.log('Пользователь выбрал подраздел Уфанет:', text, chatId);
         return;
     }
 
@@ -752,6 +816,7 @@ bot.on('message', async (msg) => {
     if (channel) {
         showChannelSubmenu(chatId, channel.name);
         logger.info({ chatId, channel: channel.name }, 'user selected channel');
+        console.log('Пользователь выбрал канал:', channel.name, chatId);
         return;
     }
 
@@ -764,6 +829,7 @@ bot.on('message', async (msg) => {
                     const state = chatState.get(chatId);
                     const channelName = (state && state.selectedChannel) || c.name;
                     const lowercase = v.toLowerCase();
+                    console.log('Пользователь выбрал опцию для канала:', channelName, v);
                     if (lowercase.includes('логотип')) {
                         safeSendAsset(chatId, channelName, 'logo_color', `Логотип ${channelName}`);
                     } else if (lowercase.includes('фирмен') || lowercase.includes('бланк')) {
